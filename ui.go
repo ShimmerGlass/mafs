@@ -35,6 +35,7 @@ func NewUI() (*UI, error) {
 			&InteractiveCommand{},
 			participle.Lexer(lex),
 			participle.Elide("Whitespace"),
+			participle.UseLookahead(30),
 		),
 		ctx: NewInteractiveContext(
 			func(ctx *InteractiveContext, v float64) {

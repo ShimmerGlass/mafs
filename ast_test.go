@@ -11,6 +11,7 @@ var parser = participle.MustBuild(
 	&Command{},
 	participle.Lexer(lex),
 	participle.Elide("Whitespace"),
+	participle.UseLookahead(30),
 )
 
 var evalsBase10 = map[string]float64{
@@ -35,7 +36,7 @@ var evalsBase10 = map[string]float64{
 	// precedence
 	"2 + 2 * 2": 6,
 
-	// functions
+	// // functions
 	"sqrt(4)":          2,
 	"sqrt(sqrt(16))":   2,
 	"-sqrt(4)":         -2,

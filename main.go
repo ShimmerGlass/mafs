@@ -33,7 +33,11 @@ func main() {
 
 func evalOne(in string) (float64, error) {
 	expr := &Command{}
-	err := participle.MustBuild(&Command{}, participle.Lexer(lex)).ParseString("", in, expr)
+	err := participle.MustBuild(
+		&Command{},
+		participle.Lexer(lex),
+		participle.UseLookahead(30),
+	).ParseString("", in, expr)
 	if err != nil {
 		return 0, err
 	}

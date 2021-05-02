@@ -11,14 +11,22 @@ import (
 )
 
 var lex = stateful.MustSimple([]stateful.Rule{
-	{"Var", `\$\w+`, nil},
-	{"Ref", `#\d+`, nil},
-	{"Command", `/[a-z]+`, nil},
-	{"Call", `\w+\(`, nil},
-	{"Number", `([\da-fA-F]+(?:\.\d+)?)|\.\d+`, nil},
-	{"Int", `\d+`, nil},
-	{"Punct", `[*/+\-(),=?%]`, nil},
-	{"Whitespace", `[ \t\n\r]+`, nil},
+	{
+		Name:    "Word",
+		Pattern: `\w+`,
+	},
+	{
+		Name:    "Operator",
+		Pattern: `[*/%+\-]`,
+	},
+	{
+		Name:    "Punct",
+		Pattern: `[()\.,#$=]`,
+	},
+	{
+		Name:    "Whitespace",
+		Pattern: `\s+`,
+	},
 })
 
 type Operator string
@@ -40,16 +48,26 @@ const (
 
 type Value struct {
 	Operator *UnaryOperator `@("+" | "-")?`
-	Number   *string        `(   @Number`
-	Call     *Call          `  | @@`
-	Variable *string        `  | (@Var | @Ref)`
+	Call     *Call          `(   @@`
+	Variable *Variable      `  | @@`
+	Number   *Number        `  | @@`
 
-	Subexpression *Expression `| "(" @@ ")" )`
+	Subexpression *Expression `| ( "(" @@ ")" ) )`
+}
+
+type Number struct {
+	Left  *string `@Word?`
+	Right *string `( "." @Word )?`
+	Exp   *string `( "e" @Word )?`
+}
+
+type Variable struct {
+	Name string `"$" @Word`
 }
 
 type Call struct {
-	Function string        `@Call`
-	Inputs   []*Expression `( @@ ( "," @@ )* )? ")"`
+	Function string        `@Word`
+	Inputs   []*Expression `"(" ( @@ ( "," @@ )* )? ")"`
 }
 
 type OpFactor struct {
@@ -73,8 +91,8 @@ type Expression struct {
 }
 
 type Assignment struct {
-	Name  string      `@Var "="`
-	Value *Expression `@@`
+	Variable *Variable   `@@ "="`
+	Value    *Expression `@@`
 }
 
 type Command struct {
@@ -83,7 +101,7 @@ type Command struct {
 }
 
 type InteractiveCommand struct {
-	CtxCommand *string  `  @(Command | "?")`
+	CtxCommand *string  `  "#" @Word`
 	Command    *Command `| @@`
 }
 
@@ -95,12 +113,20 @@ func (o Operator) String() string {
 
 func (v *Value) String() string {
 	if v.Number != nil {
-		return *v.Number
+		return v.Number.String()
 	}
 	if v.Variable != nil {
-		return *v.Variable
+		return v.Variable.String()
 	}
 	return "(" + v.Subexpression.String() + ")"
+}
+
+func (n *Number) String() string {
+	return ""
+}
+
+func (v *Variable) String() string {
+	return v.Name
 }
 
 func (o *OpFactor) String() string {
@@ -128,6 +154,35 @@ func (e *Expression) String() string {
 }
 
 // Evaluation
+
+func (n *Number) Eval(base int) (float64, error) {
+	num := ""
+	if n.Left != nil {
+		num += *n.Left
+	} else {
+		num += "0"
+	}
+
+	if n.Right != nil {
+		num += "."
+		num += *n.Right
+	}
+
+	res, err := ParseNumber(base, num)
+	if err != nil {
+		return 0, err
+	}
+
+	if n.Exp != nil {
+		ex, err := ParseNumber(base, *n.Exp)
+		if err != nil {
+			return 0, err
+		}
+		res = res * math.Pow(10, ex)
+	}
+
+	return res, nil
+}
 
 func (o Operator) Eval(l, r float64) (float64, error) {
 	switch o {
@@ -159,15 +214,15 @@ func (v *Value) Eval(ctx *Context) (float64, error) {
 	var value float64
 	switch {
 	case v.Number != nil:
-		val, err := ParseNumber(ctx.Base, *v.Number)
+		val, err := v.Number.Eval(ctx.Base)
 		if err != nil {
 			return 0, err
 		}
 		value = val
 	case v.Variable != nil:
-		val, ok := ctx.Vars[*v.Variable]
+		val, ok := ctx.Vars[v.Variable.Name]
 		if !ok {
-			return 0, fmt.Errorf("no such variable " + *v.Variable)
+			return 0, fmt.Errorf("no such variable " + v.Variable.Name)
 		}
 		value = val.V
 	case v.Call != nil:
@@ -233,15 +288,14 @@ func (a *Assignment) Eval(ctx *Context) (float64, error) {
 		return 0, err
 	}
 
-	ctx.Vars[a.Name] = Var{v, ""}
+	ctx.Vars[a.Variable.Name] = Var{v, ""}
 	return v, nil
 }
 
 func (c *Call) Eval(ctx *Context) (float64, error) {
-	name := c.Function[:len(c.Function)-1]
-	f, ok := ctx.Funcs[name]
+	f, ok := ctx.Funcs[c.Function]
 	if !ok {
-		return 0, fmt.Errorf("no such function %s", name)
+		return 0, fmt.Errorf("no such function %s", c.Function)
 	}
 
 	args := make([]float64, len(c.Inputs))
@@ -284,7 +338,7 @@ func (c *InteractiveCommand) Exec(ctx *InteractiveContext) {
 		}
 
 		ctx.PrintValue(ctx, v)
-		ctx.Vars["#"+strconv.Itoa(ctx.Idx)] = Var{V: v, Help: ""}
+		ctx.Vars[strconv.Itoa(ctx.Idx)] = Var{V: v, Help: ""}
 		ctx.Idx++
 		ctx.LastResult = v
 		ctx.HasLastResult = true
