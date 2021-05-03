@@ -8,7 +8,7 @@ import (
 )
 
 var parser = participle.MustBuild(
-	&Command{},
+	&Program{},
 	participle.Lexer(lex),
 	participle.Elide("Whitespace"),
 	participle.UseLookahead(30),
@@ -52,7 +52,7 @@ var evalsBase16 = map[string]float64{
 func TestEvalBase10(t *testing.T) {
 	for in, expected := range evalsBase10 {
 		t.Run(in, func(t *testing.T) {
-			expr := &Command{}
+			expr := &Program{}
 			err := parser.ParseString("", in, expr)
 			require.NoError(t, err)
 
@@ -66,7 +66,7 @@ func TestEvalBase10(t *testing.T) {
 func TestEvalBase16(t *testing.T) {
 	for in, expected := range evalsBase16 {
 		t.Run(in, func(t *testing.T) {
-			expr := &Command{}
+			expr := &Program{}
 			err := parser.ParseString("", in, expr)
 			require.NoError(t, err)
 
@@ -80,7 +80,7 @@ func TestEvalBase16(t *testing.T) {
 }
 
 func TestAssign(t *testing.T) {
-	expr := &Command{}
+	expr := &Program{}
 
 	err := parser.ParseString("", "$foo = 10", expr)
 	require.NoError(t, err)
@@ -90,7 +90,7 @@ func TestAssign(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, float64(10), v)
 
-	expr = &Command{}
+	expr = &Program{}
 	err = parser.ParseString("", "$foo", expr)
 	require.NoError(t, err)
 	v, err = expr.Eval(ctx)
@@ -99,7 +99,7 @@ func TestAssign(t *testing.T) {
 }
 
 func TestVarToVarAssignFail(t *testing.T) {
-	expr := &Command{}
+	expr := &Program{}
 	err := parser.ParseString("", "$a = b", expr)
 	require.NoError(t, err)
 

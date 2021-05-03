@@ -53,6 +53,11 @@ func (i *uiInput) Text() string {
 	return string(i.buffer)
 }
 
+func (i *uiInput) SetText(t string) {
+	i.buffer = []rune(t)
+	i.Cursor = len(i.buffer)
+}
+
 func (i *uiInput) Runes() []rune {
 	return i.buffer
 }

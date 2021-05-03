@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"runtime/debug"
 	"strings"
+	"syscall"
 
 	"github.com/alecthomas/participle/v2"
 )
@@ -22,16 +25,38 @@ func main() {
 
 	ui := NewUI()
 
-	err := ui.Run()
-	if err != nil {
-		log.Fatal(err)
+	var r interface{}
+	done := make(chan int, 1)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		done <- 0
+	}()
+
+	go func() {
+		defer func() {
+			if r = recover(); r != nil {
+				r = fmt.Sprintf("%s\n%s", r, debug.Stack())
+				done <- 1
+			}
+		}()
+		ui.Run()
+		done <- 0
+	}()
+
+	code := <-done
+	ui.Stop()
+	if r != nil {
+		fmt.Fprint(os.Stderr, r)
 	}
+	os.Exit(code)
 }
 
 func evalOne(in string) (float64, error) {
-	expr := &Command{}
+	expr := &Program{}
 	err := participle.MustBuild(
-		&Command{},
+		&Program{},
 		participle.Lexer(lex),
 		participle.UseLookahead(30),
 	).ParseString("", in, expr)

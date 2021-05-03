@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/mitchellh/go-wordwrap"
 )
 
 func (u *UI) drawBlock(x1, y1, x2, y2 int, style tcell.Style) {
@@ -14,25 +16,50 @@ func (u *UI) drawBlock(x1, y1, x2, y2 int, style tcell.Style) {
 	}
 }
 
-func (u *UI) drawInput() {
-	ex := u.input.Runes()
+func (u *UI) drawPreview(y int) int {
+	w, _ := u.screen.Size()
+	bases := u.displayedBases()
 
-	w, h := u.screen.Size()
-	y := h - 2
-
-	v, ok := u.evalExpr(u.input.Text())
-
-	for i := len(u.ctx.DisplayedBases) - 1; i >= 0; i-- {
-		b := u.ctx.DisplayedBases[i]
-		u.drawBlock(0, y, w, y, stylePreview)
-		if ok {
-			u.emitStr(1, y, stylePreview, fmt.Sprintf("%2d> ", b))
-			u.printBase(w-36-1, y, v, b, stylePreview)
+	if u.currentError != nil {
+		wrapped := strings.Split(wordwrap.WrapString(u.currentError.Error(), uint(w-2)), "\n")
+		lines := len(wrapped)
+		if lines < len(bases) {
+			lines = len(bases)
 		}
-		y--
+		for i := lines - 1; i >= 0; i-- {
+			if i < len(wrapped) {
+				u.emitStr(1, y, styleExpressionError, wrapped[i])
+			}
+			y--
+		}
+	} else {
+		for i := len(bases) - 1; i >= 0; i-- {
+			b := bases[i]
+			u.drawBlock(0, y, w, y, stylePreview)
+			u.emitStr(1, y, stylePreview, fmt.Sprintf("%2d> ", b))
+
+			if u.currentProg != nil {
+				u.printBase(w-36-1, y, u.currentValue, b, stylePreview)
+			}
+			y--
+		}
 	}
+	return y
+}
+
+func (u *UI) displayedBases() []int {
+	return dedupInt(append([]int{u.ctx.Base}, u.bases...))
+}
+
+func (u *UI) drawInput(y int) int {
+	ex := u.input.Runes()
+	w, _ := u.screen.Size()
+
+	prefix := fmt.Sprintf("$%d = ", u.idx)
 
 	u.drawBlock(0, y, w, y, styleInput)
+	u.emitStr(1, y, styleInput, prefix)
+
 	for i := 0; i <= len(ex); i++ {
 		style := styleInput
 		if i == u.input.Cursor {
@@ -43,38 +70,34 @@ func (u *UI) drawInput() {
 			r = ex[i]
 		}
 
-		u.screen.SetContent(i+1, y, r, nil, style)
+		u.screen.SetContent(len(prefix)+i+1, y, r, nil, style)
 	}
+	y--
+	return y
 }
 
-func (u *UI) drawHistory() {
-	w, h := u.screen.Size()
-	y := h - 2 - u.inputBarSize()
-
+func (u *UI) drawHistory(y int) int {
+	w, _ := u.screen.Size()
 	for i := len(u.history) - 1; i >= 0; i-- {
 		if y < 0 {
 			break
 		}
 
 		h := u.history[i]
-		u.emitStr(1, y, styleExpression, h.Expr)
-		if h.Error != nil {
-			e := h.Error.Error()
-			u.emitStr(w-len(e)-1, y, styleExpressionError, e)
-		} else {
-			u.printBase(w-36-1, y, h.Value, u.ctx.Base, styleExpression)
-		}
+		u.emitStr(1, y, styleExpression, fmt.Sprintf("$%d = %s", i, h.Prog.Expr.String()))
+		u.printBase(w-36-1, y, h.Value, u.ctx.Base, styleExpression)
 
 		y--
 	}
+
+	return y
 }
 
-func (u *UI) drawBottomBar() {
-	w, h := u.screen.Size()
-	y := h - 1
-	for x := 0; x < w; x++ {
-		u.screen.SetContent(x, y, ' ', nil, styleBar)
-	}
+func (u *UI) drawBottomBar(y int) int {
+	w, _ := u.screen.Size()
 
-	u.emitStr(1, y, styleBar, fmt.Sprintf("Base: %d", u.ctx.Base))
+	u.drawBlock(0, y, w-1, y, styleBar)
+	u.emitStr(1, y, styleBar, fmt.Sprintf("Base: %d | Displayed bases: %v", u.ctx.Base, u.displayedBases()))
+	y--
+	return y
 }

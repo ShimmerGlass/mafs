@@ -4,7 +4,6 @@ package main
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer/stateful"
@@ -95,14 +94,19 @@ type Assignment struct {
 	Value    *Expression `@@`
 }
 
-type Command struct {
+type Program struct {
 	Assignment *Assignment `  @@ `
 	Expr       *Expression `| @@`
 }
 
-type InteractiveCommand struct {
-	CtxCommand *string  `  "#" @Word`
-	Command    *Command `| @@`
+type Command struct {
+	Name   string   `"#" @Word`
+	Inputs []string `( @Word ( "," @Word )* )?`
+}
+
+type InteractiveProgram struct {
+	Command *Command `  @@`
+	Program *Program `| @@`
 }
 
 // Display
@@ -112,21 +116,55 @@ func (o Operator) String() string {
 }
 
 func (v *Value) String() string {
-	if v.Number != nil {
-		return v.Number.String()
+	res := ""
+	if v.Operator != nil {
+		res += string(*v.Operator)
 	}
-	if v.Variable != nil {
-		return v.Variable.String()
+	switch {
+	case v.Number != nil:
+		res += v.Number.String()
+
+	case v.Variable != nil:
+		res += v.Variable.String()
+
+	case v.Call != nil:
+		res += v.Call.String()
+
+	case v.Subexpression != nil:
+		res += "(" + v.Subexpression.String() + ")"
 	}
-	return "(" + v.Subexpression.String() + ")"
+
+	return res
 }
 
 func (n *Number) String() string {
-	return ""
+	r := ""
+	if n.Left != nil {
+		r += *n.Left
+	} else {
+		r += "0"
+	}
+	if n.Right != nil {
+		r += "." + *n.Right
+	}
+	if n.Exp != nil {
+		r += "e" + *n.Exp
+	}
+
+	return r
 }
 
 func (v *Variable) String() string {
-	return v.Name
+	return "$" + v.Name
+}
+
+func (c *Call) String() string {
+	args := []string{}
+	for _, a := range c.Inputs {
+		args = append(args, a.String())
+	}
+
+	return fmt.Sprintf("%s(%s)", c.Function, strings.Join(args, ", "))
 }
 
 func (o *OpFactor) String() string {
@@ -134,7 +172,10 @@ func (o *OpFactor) String() string {
 }
 
 func (t *Term) String() string {
-	out := []string{t.Left.String()}
+	out := []string{}
+	if t.Left != nil {
+		out = append(out, t.Left.String())
+	}
 	for _, r := range t.Right {
 		out = append(out, r.String())
 	}
@@ -146,7 +187,10 @@ func (o *OpTerm) String() string {
 }
 
 func (e *Expression) String() string {
-	out := []string{e.Left.String()}
+	out := []string{}
+	if e.Left != nil {
+		out = append(out, e.Left.String())
+	}
 	for _, r := range e.Right {
 		out = append(out, r.String())
 	}
@@ -224,7 +268,7 @@ func (v *Value) Eval(ctx *Context) (float64, error) {
 		if !ok {
 			return 0, fmt.Errorf("no such variable " + v.Variable.Name)
 		}
-		value = val.V
+		value = val
 	case v.Call != nil:
 		val, err := v.Call.Eval(ctx)
 		if err != nil {
@@ -288,7 +332,7 @@ func (a *Assignment) Eval(ctx *Context) (float64, error) {
 		return 0, err
 	}
 
-	ctx.Vars[a.Variable.Name] = Var{v, ""}
+	ctx.Vars[a.Variable.Name] = v
 	return v, nil
 }
 
@@ -307,38 +351,15 @@ func (c *Call) Eval(ctx *Context) (float64, error) {
 		args[i] = v
 	}
 
-	return f.F(args)
+	return f(args)
 }
 
-func (c *Command) Eval(ctx *Context) (float64, error) {
+func (c *Program) Eval(ctx *Context) (float64, error) {
 	switch {
 	case c.Expr != nil:
 		return c.Expr.Eval(ctx)
 
 	default:
 		return c.Assignment.Eval(ctx)
-	}
-}
-
-func (c *InteractiveCommand) Exec(ctx *InteractiveContext) (v float64, err error) {
-	switch {
-	case c.CtxCommand != nil:
-		cmd, ok := ctx.Commands[*c.CtxCommand]
-		if !ok {
-			return 0, fmt.Errorf("no such command %s", *c.CtxCommand)
-		}
-		cmd(ctx)
-		return 0, nil
-
-	default:
-		v, err := c.Command.Eval(ctx.Context)
-		if err != nil {
-			return 0, err
-		}
-
-		ctx.Vars[strconv.Itoa(ctx.Idx)] = Var{V: v, Help: ""}
-		ctx.Idx++
-
-		return v, nil
 	}
 }

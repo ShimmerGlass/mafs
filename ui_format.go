@@ -13,6 +13,14 @@ var baseColors = map[int]tcell.Color{
 	16: colorBlue,
 }
 
+func (u *UI) formatValue(v float64, base int) string {
+	if base == 10 {
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	}
+
+	return strconv.FormatInt(int64(v), base)
+}
+
 func (u *UI) printBase(x, y int, v float64, base int, style tcell.Style) {
 	f := []rune(strconv.FormatInt(int64(v), base))
 	l := 35
