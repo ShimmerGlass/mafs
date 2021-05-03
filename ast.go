@@ -197,6 +197,18 @@ func (e *Expression) String() string {
 	return strings.Join(out, " ")
 }
 
+func (p *Program) String() string {
+	switch {
+	case p.Assignment != nil:
+		return fmt.Sprintf("%s = %s", p.Assignment.Variable.String(), p.Assignment.Value.String())
+
+	case p.Expr != nil:
+		return p.Expr.String()
+	}
+
+	return ""
+}
+
 // Evaluation
 
 func (n *Number) Eval(base int) (float64, error) {

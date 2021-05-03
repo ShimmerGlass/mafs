@@ -84,7 +84,7 @@ func (u *UI) drawHistory(y int) int {
 		}
 
 		h := u.history[i]
-		u.emitStr(1, y, styleExpression, fmt.Sprintf("$%d = %s", i, h.Prog.Expr.String()))
+		u.emitStr(1, y, styleExpression, fmt.Sprintf("$%d = %s", i, h.Prog.String()))
 		u.printBase(w-36-1, y, h.Value, u.ctx.Base, styleExpression)
 
 		y--
