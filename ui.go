@@ -1,203 +1,151 @@
 package main
 
 import (
-	"fmt"
-	"io"
-	"math"
-	"math/bits"
-	"strconv"
-	"strings"
+	"log"
 
 	"github.com/alecthomas/participle/v2"
-	"github.com/chzyer/readline"
-	"github.com/fatih/color"
+	"github.com/gdamore/tcell/v2"
+	"github.com/gdamore/tcell/v2/encoding"
+	"github.com/mattn/go-runewidth"
 )
 
-var colors = map[string]*color.Color{
-	"chrome": color.New(color.FgHiBlack),
-	"error":  color.New(color.FgHiRed),
-	"-2":     color.New(color.FgHiBlack),
-	"2":      color.New(color.FgHiBlue),
-	"10":     color.New(color.FgHiYellow),
-	"16":     color.New(color.FgHiCyan),
+func init() {
+	encoding.Register()
+}
+
+type History struct {
+	Expr  string
+	Value float64
+	Error error
 }
 
 type UI struct {
 	parser *participle.Parser
 	ctx    *InteractiveContext
-	l      *readline.Instance
+	screen tcell.Screen
+
+	input   *uiInput
+	history []History
 }
 
-func NewUI() (*UI, error) {
+func NewUI() *UI {
+	s, err := tcell.NewScreen()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := s.Init(); err != nil {
+		log.Fatal(err)
+	}
 
-	ui := &UI{
+	s.SetStyle(styleDefault)
+
+	return &UI{
+		screen: s,
+		input:  &uiInput{},
 		parser: participle.MustBuild(
 			&InteractiveCommand{},
 			participle.Lexer(lex),
 			participle.Elide("Whitespace"),
 			participle.UseLookahead(30),
 		),
-		ctx: NewInteractiveContext(
-			func(ctx *InteractiveContext, v float64) {
-				prompt := fmt.Sprintf("%s» ", strings.Repeat(" ", len(strconv.Itoa(ctx.Idx))+2))
-				colors["chrome"].Print(prompt)
-
-				colors["10"].Println(v)
-
-				if v < 0 ||
-					math.IsInf(v, 1) ||
-					math.IsInf(v, -1) ||
-					math.IsNaN(v) ||
-					math.Trunc(v) != v {
-					return
-				}
-
-				vi := uint64(v)
-
-				colors["chrome"].Print(prompt)
-
-				binSize := 32
-				if bits.Len64(uint64(vi)) > 32 {
-					binSize = 64
-				}
-
-				for i := 1; i <= binSize; i++ {
-					on := vi&(1<<(uint64(binSize-1)-uint64(i-1))) > 0
-
-					if on {
-						colors["2"].Print(1)
-					} else {
-						colors["-2"].Print(0)
-					}
-					if i%4 == 0 {
-						fmt.Print(" ")
-					}
-					if i%8 == 0 {
-						fmt.Print(" ")
-					}
-				}
-
-				fmt.Println()
-
-				hex := fmt.Sprintf("%X", vi)
-				padding := binSize/4 - len(hex)
-
-				colors["chrome"].Print(prompt)
-				fmt.Print(strings.Repeat(" ", padding*5+padding/2))
-				for i, c := range hex {
-					colors["16"].Print(string(c))
-					fmt.Print("    ")
-					if (padding+i+1)%2 == 0 {
-						fmt.Print(" ")
-					}
-				}
-
-				fmt.Println()
-			},
-			func(ctx *InteractiveContext, s string) {
-				fmt.Println(s)
-			},
-			func(ctx *InteractiveContext, s string) {
-				colors["error"].Println(s)
-			},
-		),
+		ctx: NewInteractiveContext(),
 	}
-
-	completer := readline.NewPrefixCompleter(
-		readline.PcItemDynamic(ui.compl),
-	)
-	l, err := readline.NewEx(&readline.Config{
-		HistoryFile:     "/tmp/readline.tmp",
-		AutoComplete:    completer,
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
-
-		HistorySearchFold: true,
-		FuncFilterInputRune: func(r rune) (rune, bool) {
-			switch r {
-			// block CtrlZ feature
-			case readline.CharCtrlZ:
-				return r, false
-			}
-			return r, true
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	ui.l = l
-
-	return ui, nil
 }
 
 func (u *UI) Run() error {
+	u.draw()
+
 	for {
-		u.l.SetPrompt(colors["chrome"].Sprintf("#%d", u.ctx.Idx) + colors[fmt.Sprint(u.ctx.Base)].Sprintf(" » "))
-		u.prefillLine()
-
-		line, err := u.l.Readline()
-		if err == readline.ErrInterrupt {
-			if len(line) == 0 {
-				break
-			} else {
-				u.ctx.HasLastResult = false
-				continue
+		ev := u.screen.PollEvent()
+		switch ev := ev.(type) {
+		case *tcell.EventKey:
+			switch ev.Key() {
+			case tcell.KeyRune:
+				u.input.Add(ev.Rune())
+				u.draw()
+			case tcell.KeyDEL:
+				u.input.Del()
+				u.draw()
+			case tcell.KeyDelete:
+				u.input.DelFwd()
+				u.draw()
+			case tcell.KeyEnter:
+				u.exec()
+			case tcell.KeyLeft:
+				u.input.MoveCursor(-1)
+				u.draw()
+			case tcell.KeyRight:
+				u.input.MoveCursor(1)
+				u.draw()
+			case tcell.KeyEscape:
+				return nil
 			}
-		} else if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
+		case *tcell.EventResize:
+			u.draw()
 		}
-
-		u.process(line)
 	}
 
-	return nil
 }
 
-func (u *UI) process(line string) {
-	if strings.TrimSpace(line) == "" {
-		return
+func (u *UI) exec() {
+	ex := u.input.Text()
+
+	cmd := &InteractiveCommand{}
+	err := u.parser.ParseString("", ex, cmd)
+
+	h := History{
+		Expr:  ex,
+		Error: err,
+	}
+	if err == nil {
+		v, err := cmd.Exec(u.ctx)
+		h.Error = err
+		h.Value = v
 	}
 
-	expr := &InteractiveCommand{}
-	err := u.parser.ParseString("", line, expr)
+	u.history = append(u.history, h)
+	u.input.Clear()
+
+	u.draw()
+}
+
+func (u *UI) draw() {
+	u.screen.Clear()
+	u.drawInput()
+	u.drawHistory()
+	u.drawBottomBar()
+	u.screen.Sync()
+}
+
+func (u *UI) evalExpr(ex string) (float64, bool) {
+	e := &InteractiveCommand{}
+	err := u.parser.ParseString("", ex, e)
 	if err != nil {
-		u.ctx.PrintError(u.ctx, err.Error())
-		return
+		return 0, false
 	}
 
-	expr.Exec(u.ctx)
+	v, err := e.Exec(u.ctx)
+	if err != nil {
+		return 0, false
+	}
+
+	return v, true
 }
 
-func (u *UI) compl(in string) (res []string) {
-	for name := range u.ctx.Funcs {
-		if strings.HasPrefix(name, in) {
-			res = append(res, name+"(")
-		}
-	}
-	for name := range u.ctx.Vars {
-		if strings.HasPrefix(name, in) {
-			res = append(res, name)
-		}
-	}
-	for name := range u.ctx.Commands {
-		if strings.HasPrefix(name, in) {
-			res = append(res, name)
-		}
-	}
-
-	return
+func (u *UI) inputBarSize() int {
+	return len(u.ctx.DisplayedBases) + 1
 }
 
-func (u *UI) prefillLine() {
-	if !u.ctx.HasLastResult {
-		return
+func (u *UI) emitStr(x, y int, style tcell.Style, str string) {
+	for _, c := range str {
+		var comb []rune
+		w := runewidth.RuneWidth(c)
+		if w == 0 {
+			comb = []rune{c}
+			c = ' '
+			w = 1
+		}
+		u.screen.SetContent(x, y, c, comb, style)
+		x += w
 	}
-	if u.ctx.Base == 10 {
-		u.l.WriteStdin([]byte(fmt.Sprint(u.ctx.LastResult)))
-		return
-	}
-	u.l.WriteStdin([]byte(strconv.FormatInt(int64(u.ctx.LastResult), u.ctx.Base)))
 }

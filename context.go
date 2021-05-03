@@ -1,9 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"math"
-	"strings"
 )
 
 type Func struct {
@@ -25,13 +23,8 @@ type Context struct {
 type InteractiveContext struct {
 	*Context
 
-	Idx           int
-	HasLastResult bool
-	LastResult    float64
-
-	PrintValue func(*InteractiveContext, float64)
-	PrintText  func(*InteractiveContext, string)
-	PrintError func(*InteractiveContext, string)
+	Idx            int
+	DisplayedBases []int
 
 	Commands map[string]func(*InteractiveContext)
 }
@@ -55,44 +48,18 @@ func NewContext() *Context {
 	}
 }
 
-func NewInteractiveContext(
-	printValue func(*InteractiveContext, float64),
-	printText func(*InteractiveContext, string),
-	printError func(*InteractiveContext, string),
-) *InteractiveContext {
+func NewInteractiveContext() *InteractiveContext {
 	return &InteractiveContext{
-		Context: NewContext(),
-
-		PrintValue: printValue,
-		PrintText:  printText,
-		PrintError: printError,
-
+		Context:        NewContext(),
+		DisplayedBases: []int{10, 2, 16},
 		Commands: map[string]func(ctx *InteractiveContext){
-			"?":    func(ctx *InteractiveContext) { ctx.PrintHelp() },
-			"/dec": func(ctx *InteractiveContext) { ctx.SetBase(10) },
-			"/bin": func(ctx *InteractiveContext) { ctx.SetBase(2) },
-			"/hex": func(ctx *InteractiveContext) { ctx.SetBase(16) },
+			"dec": func(ctx *InteractiveContext) { ctx.SetBase(10) },
+			"bin": func(ctx *InteractiveContext) { ctx.SetBase(2) },
+			"hex": func(ctx *InteractiveContext) { ctx.SetBase(16) },
 		},
 	}
 }
 
-func (c *InteractiveContext) PrintHelp() {
-	b := &strings.Builder{}
-
-	b.WriteString("Functions:\n")
-	for name, f := range c.Funcs {
-		b.WriteString(fmt.Sprintf("  %s: %s\n", name, f.Help))
-	}
-
-	b.WriteString("Variables:\n")
-	for name, f := range c.Vars {
-		b.WriteString(fmt.Sprintf("  %s: %f\n", name, f.V))
-	}
-
-	c.PrintText(c, b.String())
-}
-
 func (c *InteractiveContext) SetBase(b int) {
 	c.Base = b
-	c.PrintText(c, fmt.Sprintf("Base is now %d", b))
 }

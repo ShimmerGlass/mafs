@@ -20,12 +20,9 @@ func main() {
 		return
 	}
 
-	ui, err := NewUI()
-	if err != nil {
-		log.Fatal(err)
-	}
+	ui := NewUI()
 
-	err = ui.Run()
+	err := ui.Run()
 	if err != nil {
 		log.Fatal(err)
 	}

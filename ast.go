@@ -320,27 +320,25 @@ func (c *Command) Eval(ctx *Context) (float64, error) {
 	}
 }
 
-func (c *InteractiveCommand) Exec(ctx *InteractiveContext) {
+func (c *InteractiveCommand) Exec(ctx *InteractiveContext) (v float64, err error) {
 	switch {
 	case c.CtxCommand != nil:
 		cmd, ok := ctx.Commands[*c.CtxCommand]
 		if !ok {
-			ctx.PrintError(ctx, fmt.Sprintf("no such command %s", *c.CtxCommand))
-			return
+			return 0, fmt.Errorf("no such command %s", *c.CtxCommand)
 		}
 		cmd(ctx)
+		return 0, nil
 
 	default:
 		v, err := c.Command.Eval(ctx.Context)
 		if err != nil {
-			ctx.PrintError(ctx, err.Error())
-			return
+			return 0, err
 		}
 
-		ctx.PrintValue(ctx, v)
 		ctx.Vars[strconv.Itoa(ctx.Idx)] = Var{V: v, Help: ""}
 		ctx.Idx++
-		ctx.LastResult = v
-		ctx.HasLastResult = true
+
+		return v, nil
 	}
 }
