@@ -8,7 +8,7 @@ import (
 
 var baseColors = map[int]tcell.Color{
 	2:  colorCyan,
-	-2: colorBase01,
+	-2: colorComment,
 	10: colorYellow,
 	16: colorBlue,
 }

@@ -58,7 +58,7 @@ func (u *UI) drawInput(y int) int {
 	prefix := fmt.Sprintf("$%d = ", u.idx)
 
 	u.drawBlock(0, y, w, y, styleInput)
-	u.emitStr(1, y, styleInput, prefix)
+	u.emitStr(1, y, styleInput.Foreground(colorComment), prefix)
 
 	for i := 0; i <= len(ex); i++ {
 		style := styleInput
@@ -84,7 +84,9 @@ func (u *UI) drawHistory(y int) int {
 		}
 
 		h := u.history[i]
-		u.emitStr(1, y, styleExpression, fmt.Sprintf("$%d = %s", i, h.Prog.String()))
+		prefix := fmt.Sprintf("$%d = ", i)
+		u.emitStr(1, y, styleExpression.Foreground(colorComment), prefix)
+		u.emitStr(1+len(prefix), y, styleExpression, h.Prog.String())
 		u.printBase(w-36-1, y, h.Value, u.ctx.Base, styleExpression)
 
 		y--
