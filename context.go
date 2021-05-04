@@ -2,31 +2,34 @@ package main
 
 import (
 	"math"
+
+	"github.com/shimmerglass/mafs/num"
 )
 
-type Func func([]float64) (float64, error)
+const (
+	typeSignedInt = "sint"
+	typeFloat     = "float"
+)
+
+type Func func([]num.Number) (num.Number, error)
 
 type Context struct {
 	Base  int
-	Vars  map[string]float64
+	Type  string
+	Vars  map[string]num.Number
 	Funcs map[string]Func
 }
 
 func NewContext() *Context {
 	return &Context{
 		Base: 10,
-		Vars: map[string]float64{
-			"$pi":      math.Pi,
-			"$max_u8":  float64(math.MaxUint8),
-			"$max_u16": float64(math.MaxUint16),
-			"$max_u32": float64(math.MaxUint32),
-			"$max_8":   float64(math.MaxInt8),
-			"$max_16":  float64(math.MaxInt16),
-			"$max_32":  float64(math.MaxInt32),
+		Vars: map[string]num.Number{
+			"pi": num.Float(math.Pi),
 		},
 		Funcs: map[string]Func{
-			"sqrt": sqrt,
-			"pow":  pow,
+			// "sqrt": sqrt,
+			// "pow":  pow,
 		},
+		Type: typeSignedInt,
 	}
 }

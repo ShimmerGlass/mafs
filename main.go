@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/alecthomas/participle/v2"
+	"github.com/shimmerglass/mafs/num"
 )
 
 func main() {
@@ -53,7 +54,7 @@ func main() {
 	os.Exit(code)
 }
 
-func evalOne(in string) (float64, error) {
+func evalOne(in string) (num.Number, error) {
 	expr := &Program{}
 	err := participle.MustBuild(
 		&Program{},
@@ -61,7 +62,7 @@ func evalOne(in string) (float64, error) {
 		participle.UseLookahead(30),
 	).ParseString("", in, expr)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	return expr.Eval(NewContext())

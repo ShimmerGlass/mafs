@@ -3,17 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
-	"strconv"
 )
-
-func ParseNumber(base int, in string) (float64, error) {
-	if base == 10 {
-		return strconv.ParseFloat(in, 64)
-	}
-
-	v, err := strconv.ParseInt(in, base, 64)
-	return float64(v), err
-}
 
 func sqrt(in []float64) (float64, error) {
 	if len(in) != 1 {

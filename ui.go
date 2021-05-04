@@ -11,6 +11,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/gdamore/tcell/v2/encoding"
 	"github.com/mattn/go-runewidth"
+	"github.com/shimmerglass/mafs/num"
 )
 
 func init() {
@@ -19,7 +20,7 @@ func init() {
 
 type History struct {
 	Prog  *Program
-	Value float64
+	Value num.Number
 }
 
 type UI struct {
@@ -31,7 +32,7 @@ type UI struct {
 
 	input        *uiInput
 	currentProg  *InteractiveProgram
-	currentValue float64
+	currentValue num.Number
 	currentError error
 
 	idx     int
@@ -65,6 +66,7 @@ func NewUI() *UI {
 	}
 	u.cmds["base"] = u.cmdSetBase
 	u.cmds["dbases"] = u.cmdSetDisplayedBases
+	u.cmds["type"] = u.cmdSetType
 
 	return u
 }
@@ -119,7 +121,7 @@ func (u *UI) exec() {
 		u.evalCmd()
 		u.input.Clear()
 		u.currentProg = nil
-		u.currentValue = 0
+		u.currentValue = nil
 	} else {
 		u.history = append(u.history, History{
 			Prog:  u.currentProg.Program,
@@ -153,7 +155,7 @@ func (u *UI) evalInput() {
 	if strings.TrimSpace(in) == "" {
 		u.currentError = nil
 		u.currentProg = nil
-		u.currentValue = 0
+		u.currentValue = nil
 		return
 	}
 
@@ -161,7 +163,7 @@ func (u *UI) evalInput() {
 	if err != nil {
 		u.currentError = err
 		u.currentProg = nil
-		u.currentValue = 0
+		u.currentValue = nil
 	} else {
 		u.currentProg = prog
 		u.currentValue = v
@@ -169,23 +171,23 @@ func (u *UI) evalInput() {
 	}
 }
 
-func (u *UI) evalExpr(ex string) (*InteractiveProgram, float64, error) {
+func (u *UI) evalExpr(ex string) (*InteractiveProgram, num.Number, error) {
 	e := &InteractiveProgram{}
 	err := u.parser.ParseString("", ex, e)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, err
 	}
 
 	if e.Program != nil {
 		v, err := e.Program.Eval(u.ctx)
 		if err != nil {
-			return nil, 0, err
+			return nil, nil, err
 		}
 
 		return e, v, nil
 	}
 
-	return e, 0, nil
+	return e, nil, nil
 }
 
 func (u *UI) evalCmd() {

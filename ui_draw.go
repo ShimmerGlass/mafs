@@ -38,7 +38,7 @@ func (u *UI) drawPreview(y int) int {
 			u.drawBlock(0, y, w, y, stylePreview)
 			u.emitStr(1, y, stylePreview, fmt.Sprintf("%2d> ", b))
 
-			if u.currentProg != nil {
+			if u.currentValue != nil {
 				u.printBase(w-36-1, y, u.currentValue, b, stylePreview)
 			}
 			y--
@@ -48,6 +48,9 @@ func (u *UI) drawPreview(y int) int {
 }
 
 func (u *UI) displayedBases() []int {
+	if u.ctx.Type == typeFloat {
+		return []int{10}
+	}
 	return dedupInt(append([]int{u.ctx.Base}, u.bases...))
 }
 
@@ -99,7 +102,7 @@ func (u *UI) drawBottomBar(y int) int {
 	w, _ := u.screen.Size()
 
 	u.drawBlock(0, y, w-1, y, styleBar)
-	u.emitStr(1, y, styleBar, fmt.Sprintf("Base: %d | Displayed bases: %v", u.ctx.Base, u.displayedBases()))
+	u.emitStr(1, y, styleBar, fmt.Sprintf("Base: %d | Displayed bases: %v | Type: %s", u.ctx.Base, u.displayedBases(), u.ctx.Type))
 	y--
 	return y
 }

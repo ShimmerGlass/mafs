@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/shimmerglass/mafs/num"
 )
 
 var baseColors = map[int]tcell.Color{
@@ -13,16 +15,19 @@ var baseColors = map[int]tcell.Color{
 	16: colorBlue,
 }
 
-func (u *UI) formatValue(v float64, base int) string {
-	if base == 10 {
-		return strconv.FormatFloat(v, 'f', -1, 64)
+func (u *UI) formatValue(v num.Number, base int) string {
+	switch n := v.(type) {
+	case num.Float:
+		return strconv.FormatFloat(float64(n), 'f', -1, 64)
+	case num.SignedInt:
+		return strconv.FormatInt(int64(n), base)
 	}
 
-	return strconv.FormatInt(int64(v), base)
+	panic(fmt.Errorf("unknow type %T", v))
 }
 
-func (u *UI) printBase(x, y int, v float64, base int, style tcell.Style) {
-	f := []rune(strconv.FormatInt(int64(v), base))
+func (u *UI) printBase(x, y int, v num.Number, base int, style tcell.Style) {
+	f := []rune(u.formatValue(v, base))
 	l := 35
 
 	switch base {

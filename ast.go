@@ -3,10 +3,12 @@ package main
 
 import (
 	"fmt"
-	"math"
+	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer/stateful"
+	"github.com/shimmerglass/mafs/num"
 )
 
 var lex = stateful.MustSimple([]stateful.Rule{
@@ -57,7 +59,6 @@ type Value struct {
 type Number struct {
 	Left  *string `@Word?`
 	Right *string `( "." @Word )?`
-	Exp   *string `( "e" @Word )?`
 }
 
 type Variable struct {
@@ -147,10 +148,6 @@ func (n *Number) String() string {
 	if n.Right != nil {
 		r += "." + *n.Right
 	}
-	if n.Exp != nil {
-		r += "e" + *n.Exp
-	}
-
 	return r
 }
 
@@ -211,86 +208,89 @@ func (p *Program) String() string {
 
 // Evaluation
 
-func (n *Number) Eval(base int) (float64, error) {
-	num := ""
-	if n.Left != nil {
-		num += *n.Left
-	} else {
-		num += "0"
-	}
-
-	if n.Right != nil {
-		num += "."
-		num += *n.Right
-	}
-
-	res, err := ParseNumber(base, num)
-	if err != nil {
-		return 0, err
-	}
-
-	if n.Exp != nil {
-		ex, err := ParseNumber(base, *n.Exp)
-		if err != nil {
-			return 0, err
+func (n *Number) Eval(ctx *Context) (num.Number, error) {
+	switch ctx.Type {
+	case typeFloat:
+		s := *n.Left
+		if n.Right != nil {
+			s += "." + *n.Right
 		}
-		res = res * math.Pow(10, ex)
-	}
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return nil, err
+		}
+		return num.Float(v), nil
 
-	return res, nil
+	case typeSignedInt:
+		if n.Right != nil {
+			return nil, fmt.Errorf("decimal point not allowed in int mode")
+		}
+		v, err := strconv.ParseInt(*n.Left, ctx.Base, 64)
+		if err != nil {
+			return nil, err
+		}
+		return num.SignedInt(v), nil
+
+	default:
+		return nil, fmt.Errorf("bad type %s", ctx.Type)
+	}
 }
 
-func (o Operator) Eval(l, r float64) (float64, error) {
+func (o Operator) Eval(l, r num.Number) (num.Number, error) {
+	if !reflect.TypeOf(l).AssignableTo(reflect.TypeOf(r)) {
+		return nil, fmt.Errorf("incompatible types")
+	}
+
 	switch o {
 	case OpMul:
-		return l * r, nil
+		return l.Mul(r)
 	case OpDiv:
-		return l / r, nil
+		return l.Div(r)
 	case OpMod:
-		return math.Mod(l, r), nil
+		return l.Mod(r)
 	case OpAdd:
-		return l + r, nil
+		return l.Add(r)
 	case OpSub:
-		return l - r, nil
+		return l.Sub(r)
 	}
 	panic("unsupported operator")
 }
 
-func (o UnaryOperator) Eval(v float64) (float64, error) {
+func (o UnaryOperator) Eval(v num.Number) (num.Number, error) {
 	switch o {
 	case OpMinus:
-		return -v, nil
+		return v.Inverse()
 	case OpPlus:
 		return v, nil
 	}
 	panic("unsupported operator")
 }
 
-func (v *Value) Eval(ctx *Context) (float64, error) {
-	var value float64
+func (v *Value) Eval(ctx *Context) (num.Number, error) {
+	var value num.Number
 	switch {
 	case v.Number != nil:
-		val, err := v.Number.Eval(ctx.Base)
+		val, err := v.Number.Eval(ctx)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		value = val
 	case v.Variable != nil:
 		val, ok := ctx.Vars[v.Variable.Name]
 		if !ok {
-			return 0, fmt.Errorf("no such variable " + v.Variable.Name)
+			return nil, fmt.Errorf("no such variable " + v.Variable.Name)
 		}
 		value = val
 	case v.Call != nil:
 		val, err := v.Call.Eval(ctx)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		value = val
 	case v.Subexpression != nil:
 		val, err := v.Subexpression.Eval(ctx)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		value = val
 	}
@@ -302,63 +302,63 @@ func (v *Value) Eval(ctx *Context) (float64, error) {
 	return value, nil
 }
 
-func (t *Term) Eval(ctx *Context) (float64, error) {
+func (t *Term) Eval(ctx *Context) (num.Number, error) {
 	n, err := t.Left.Eval(ctx)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	for _, r := range t.Right {
 		fact, err := r.Factor.Eval(ctx)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		n, err = r.Operator.Eval(n, fact)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
 	return n, nil
 }
 
-func (e *Expression) Eval(ctx *Context) (float64, error) {
+func (e *Expression) Eval(ctx *Context) (num.Number, error) {
 	l, err := e.Left.Eval(ctx)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	for _, r := range e.Right {
 		term, err := r.Term.Eval(ctx)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		l, err = r.Operator.Eval(l, term)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
 	return l, nil
 }
 
-func (a *Assignment) Eval(ctx *Context) (float64, error) {
+func (a *Assignment) Eval(ctx *Context) (num.Number, error) {
 	v, err := a.Value.Eval(ctx)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	ctx.Vars[a.Variable.Name] = v
 	return v, nil
 }
 
-func (c *Call) Eval(ctx *Context) (float64, error) {
+func (c *Call) Eval(ctx *Context) (num.Number, error) {
 	f, ok := ctx.Funcs[c.Function]
 	if !ok {
-		return 0, fmt.Errorf("no such function %s", c.Function)
+		return nil, fmt.Errorf("no such function %s", c.Function)
 	}
 
-	args := make([]float64, len(c.Inputs))
+	args := make([]num.Number, len(c.Inputs))
 	for i := range c.Inputs {
 		v, err := c.Inputs[i].Eval(ctx)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		args[i] = v
 	}
@@ -366,7 +366,7 @@ func (c *Call) Eval(ctx *Context) (float64, error) {
 	return f(args)
 }
 
-func (c *Program) Eval(ctx *Context) (float64, error) {
+func (c *Program) Eval(ctx *Context) (num.Number, error) {
 	switch {
 	case c.Expr != nil:
 		return c.Expr.Eval(ctx)
