@@ -39,7 +39,7 @@ func (u *UI) drawPreview(y int) int {
 			u.emitStr(1, y, stylePreview, fmt.Sprintf("%2d> ", b))
 
 			if u.currentValue != nil {
-				u.printBase(w-36-1, y, u.currentValue, b, stylePreview)
+				u.printBase(w-1, y, u.currentValue, b, u.displayedBases(), stylePreview)
 			}
 			y--
 		}
@@ -49,7 +49,7 @@ func (u *UI) drawPreview(y int) int {
 
 func (u *UI) displayedBases() []int {
 	if u.ctx.Type == typeFloat {
-		return []int{10}
+		return []int{10, 2}
 	}
 	return dedupInt(append([]int{u.ctx.Base}, u.bases...))
 }
@@ -90,7 +90,7 @@ func (u *UI) drawHistory(y int) int {
 		prefix := fmt.Sprintf("$%d = ", i)
 		u.emitStr(1, y, styleExpression.Foreground(colorComment), prefix)
 		u.emitStr(1+len(prefix), y, styleExpression, h.Prog.String())
-		u.printBase(w-36-1, y, h.Value, u.ctx.Base, styleExpression)
+		u.printBase(w-1, y, h.Value, u.ctx.Base, []int{}, styleExpression)
 
 		y--
 	}
